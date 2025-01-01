@@ -27,8 +27,8 @@ pub enum Command {
 
 impl Command {
     /// Convert the command to a byte for sending over serial
-    pub fn as_byte(self) -> u8 {
-        self as u8
+    pub fn as_byte(self) -> [u8; 1] {
+        [self as u8]
     }
 
     /// Try to convert a byte into a Command
@@ -52,28 +52,84 @@ impl Command {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Duration {}
+pub struct Remaining {
+    hours: u8,
+    minutes: u8,
+    seconds: u8,
+}
+
+impl Remaining {
+    fn new(hours: u8, minutes: u8, seconds: u8) -> Self {
+        Remaining {
+            hours,
+            minutes,
+            seconds,
+        }
+    }
+
+    fn from_bcd(bcd: [u8; 3]) -> Self {
+        let hours = bcd[0];
+        let minutes = bcd[1];
+        let seconds = bcd[2];
+        Remaining {
+            hours: 10 * (hours >> 4) + (hours & 0x0f),
+            minutes: 10 * (minutes >> 4) + (minutes & 0x0f),
+            seconds: 10 * (seconds >> 4) + (seconds & 0x0f),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClockStatus {
+    NoCock,
+    WhitesTurn,
+    BlacksTurn,
+}
+
+impl ClockStatus {
+    fn from_byte(byte: u8) -> Self {
+        if byte & 0x01 != 0 {
+            ClockStatus::NoCock
+        } else if byte & 0x08 != 0 {
+            ClockStatus::BlacksTurn
+        } else {
+            ClockStatus::WhitesTurn
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChessBoard {
-    pub board: [RawPiece;64]
+    pub board: [RawPiece; 64],
 }
 
 impl ChessBoard {
-    fn new(raw: &[u8;64]) -> Option<Self> {
+    fn new(raw: &[u8; 64]) -> Option<Self> {
         let mut board = Vec::new();
         for s in raw.iter() {
             if let Some(piece) = RawPiece::try_from_byte(*s) {
                 board.push(piece);
             } else {
-                return None
+                return None;
             }
         }
-        Some(ChessBoard{board: board.try_into().unwrap()})
+        Some(ChessBoard {
+            board: board.try_into().unwrap(),
+        })
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChessMove {}
+pub struct ChessMove {
+    grid: u8,
+    piece: RawPiece,
+}
+
+impl ChessMove {
+    fn new(grid: u8, piece: RawPiece) -> Self {
+        ChessMove { grid, piece }
+    }
+}
 
 /// Raw piece representation as sent by DGT board
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -141,7 +197,6 @@ impl RawPiece {
 /// Message types that can be received from a DGT board
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageType {
-    None = 0x00,
     BoardDump = 0x06,
     BWTime = 0x0d,
     FieldUpdate = 0x0e,
@@ -155,7 +210,6 @@ pub enum MessageType {
 impl MessageType {
     pub fn try_from_byte(byte: u8) -> Option<Self> {
         match byte {
-            0x00 => Some(MessageType::None),
             0x06 => Some(MessageType::BoardDump),
             0x0d => Some(MessageType::BWTime),
             0x0e => Some(MessageType::FieldUpdate),
@@ -171,14 +225,14 @@ impl MessageType {
 
 /// Decoded responses from the DGT board
 #[derive(Debug)]
-pub enum Response<'a> {
+pub enum Response {
     /// Complete board state
     BoardDump(ChessBoard),
     /// Clock data for both players and active color
     BWTime {
-        white_time: Duration,
-        black_time: Duration,
-        white_turn: bool,
+        white_time: Remaining,
+        black_time: Remaining,
+        status: ClockStatus,
     },
     /// Single piece movement
     FieldUpdate(ChessMove),
@@ -190,38 +244,48 @@ pub enum Response<'a> {
     Trademark(String),
     /// Board version information
     Version(String),
-    /// Raw undecoded message data
-    Raw {
-        message_type: MessageType,
-        data: &'a [u8],
-    },
 }
 
-impl<'a> Response<'a> {
+impl Response {
     /// Attempt to parse a raw message into a decoded response
-    pub fn try_from_raw(message_type: MessageType, data: &'a [u8]) -> Result<Self, ParseError> {
+    pub fn try_from_raw(message_type: MessageType, data: &[u8]) -> Result<Self, ParseError> {
         match message_type {
             MessageType::BoardDump => {
                 if data.len() == 64 {
-                    let valid = data.iter().all(|p| RawPiece::try_from_byte(*p).is_some());
-                    // ChessBoard parsing to be implemented
-                    todo!()
+                    match ChessBoard::new(data.try_into().unwrap()) {
+                        Some(board) => Ok(Response::BoardDump(board)),
+                        None => Err(ParseError::InvalidPiece),
+                    }
                 } else {
                     Err(ParseError::invalid_length(message_type, 64, data.len()))
                 }
             }
             MessageType::BWTime => {
                 if data.len() == 7 {
-                    // Parse BCD encoded times and status byte
-                    todo!()
+                    let white_time = Remaining::from_bcd(data[..3].try_into().unwrap());
+                    let black_time = Remaining::from_bcd(data[3..6].try_into().unwrap());
+                    let status = ClockStatus::from_byte(data[6]);
+                    Ok(Response::BWTime {
+                        white_time,
+                        black_time,
+                        status,
+                    })
                 } else {
                     Err(ParseError::invalid_length(message_type, 7, data.len()))
                 }
             }
             MessageType::FieldUpdate => {
                 if data.len() == 2 {
-                    // ChessMove parsing to be implemented
-                    todo!()
+                    let grid = data[0];
+                    if grid < 64 {
+                        if let Some(piece) = RawPiece::try_from_byte(data[1]) {
+                            Ok(Response::FieldUpdate(ChessMove::new(grid, piece)))
+                        } else {
+                            Err(ParseError::InvalidPiece)
+                        }
+                    } else {
+                        Err(ParseError::InvalidMove)
+                    }
                 } else {
                     Err(ParseError::invalid_length(message_type, 2, data.len()))
                 }
@@ -229,6 +293,9 @@ impl<'a> Response<'a> {
             MessageType::SerialNumber => Ok(Response::SerialNumber(
                 String::from_utf8_lossy(data).into_owned(),
             )),
+            MessageType::EEMoves => {
+                todo!("Implement EEMoves parsing")
+            }
             MessageType::BusAddress => Ok(Response::BusAddress(
                 String::from_utf8_lossy(data).into_owned(),
             )),
@@ -243,7 +310,6 @@ impl<'a> Response<'a> {
                     Err(ParseError::invalid_length(message_type, 2, data.len()))
                 }
             }
-            _ => Ok(Response::Raw { message_type, data }),
         }
     }
 }
@@ -255,7 +321,8 @@ pub enum ParseError {
         expected: usize,
         actual: usize,
     },
-    InvalidUtf8,
+    InvalidPiece,
+    InvalidMove,
 }
 
 impl ParseError {
@@ -280,20 +347,10 @@ mod tests {
     }
 
     #[test]
-    fn test_raw_fallback() {
-        let data = &[1u8, 2u8, 3u8];
-        let response = Response::try_from_raw(MessageType::None, data).unwrap();
-        assert!(
-            matches!(response, Response::Raw { message_type: MessageType::None, data: d } 
-            if d == &[1u8, 2u8, 3u8])
-        );
-    }
-
-    #[test]
     fn test_command_roundtrip() {
         let cmd = Command::RequestBoard;
         let byte = cmd.as_byte();
-        let cmd2 = Command::try_from_byte(byte).unwrap();
+        let cmd2 = Command::try_from_byte(byte[0]).unwrap();
         assert_eq!(cmd, cmd2);
     }
 
@@ -301,8 +358,6 @@ mod tests {
     fn test_invalid_command() {
         assert_eq!(Command::try_from_byte(0x00), None);
     }
-
-    use super::*;
 
     #[test]
     fn test_piece_conversion() {
