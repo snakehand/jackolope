@@ -2,8 +2,10 @@ use std::time::Duration;
 
 use serialport::SerialPort;
 
+mod game;
 mod protocol;
 
+use game::*;
 use protocol::*;
 
 fn get_response(port: &mut Box<dyn SerialPort>) -> Result<Response, Box<dyn std::error::Error>> {
@@ -69,7 +71,17 @@ fn main() {
 
     port.write(&Command::Reset.as_byte()).unwrap(); // Reset the device
     port.write(&Command::RequestBoard.as_byte()).unwrap(); // Reset the device
-    println!("{:?}", get_response(&mut port).unwrap());
+    let pos = get_response(&mut port).unwrap();
+    println!("{:?}", pos);
+    let mut game_board = match pos {
+        Response::BoardDump(board) => {
+            println!("{:?}", board);
+            GameBoard::new(board)
+        }
+        _ => {
+            panic!("Unexpected response");
+        }
+    };
     port.write(&Command::RequestSerialNumber.as_byte()).unwrap(); // Reset the device
     println!("{:?}", get_response(&mut port).unwrap());
 
@@ -79,6 +91,10 @@ fn main() {
         match get_response(&mut port) {
             Ok(response) => {
                 println!("Received response: {:?}", response);
+                if let Response::FieldUpdate(mv) = response {
+                    game_board.apply_move(mv);
+                    println!("{:?}", game_board.is_starting_position());
+                }
             }
             Err(e) => {
                 println!("Error: {:?}", e);

@@ -121,14 +121,21 @@ impl ChessBoard {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChessMove {
-    grid: u8,
-    piece: RawPiece,
+    pub grid: u8,
+    pub piece: RawPiece,
 }
 
 impl ChessMove {
     fn new(grid: u8, piece: RawPiece) -> Self {
         ChessMove { grid, piece }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PieceColor {
+    None,
+    White,
+    Black,
 }
 
 /// Raw piece representation as sent by DGT board
@@ -191,6 +198,30 @@ impl RawPiece {
             BlackKing => 'k',
             BlackQueen => 'q',
         }
+    }
+
+    /// Get the color of the piece
+    fn get_colour(&self) -> PieceColor {
+        match self {
+            RawPiece::Empty => PieceColor::None,
+            RawPiece::WhitePawn
+            | RawPiece::WhiteRook
+            | RawPiece::WhiteKnight
+            | RawPiece::WhiteBishop
+            | RawPiece::WhiteKing
+            | RawPiece::WhiteQueen => PieceColor::White,
+            RawPiece::BlackPawn
+            | RawPiece::BlackRook
+            | RawPiece::BlackKnight
+            | RawPiece::BlackBishop
+            | RawPiece::BlackKing
+            | RawPiece::BlackQueen => PieceColor::Black,
+        }
+    }
+
+    /// Check if two pieces are the same color
+    fn is_same_colour(&self, other: &RawPiece) -> bool {
+        *self != RawPiece::Empty && self.get_colour() == other.get_colour()
     }
 }
 
