@@ -1,4 +1,45 @@
 use crate::protocol::*;
+use std::collections::{hash_map::Entry, HashMap, HashSet};
+
+pub struct Capture {
+    piece: RawPiece,
+    grid: u8,
+}
+
+pub struct Move {
+    piece: RawPiece,
+    from: u8,
+    to: u8,
+}
+
+pub enum DetectedMove {
+    ShortCastle,
+    LongCastle,
+    PawnCapture(Capture),
+    Promotion(Move, RawPiece),
+    PromotionCapture(Move, Capture, RawPiece),
+    SimpleMove(Move),
+    SimpleCapture(Move, Capture),
+}
+
+fn detect_move(moves: &[ChessMove]) -> Option<DetectedMove> {
+    let mut added = HashMap::new();
+    let mut removed = HashSet::new();
+    for mv in moves {
+        if mv.piece == RawPiece::Empty {
+            if let Entry::Occupied(e) = added.entry(mv.grid) {
+                e.remove();
+            }
+            removed.insert(mv.grid);
+        } else {
+            if removed.contains(&mv.grid) {
+                removed.remove(&mv.grid);
+            }
+            added.insert(mv.grid, mv.piece);
+        }
+    }
+    None
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartPosition {

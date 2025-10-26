@@ -11,17 +11,17 @@ use protocol::*;
 fn get_response(port: &mut Box<dyn SerialPort>) -> Result<Response, Box<dyn std::error::Error>> {
     let mut buffer = [0; 1];
     loop {
-        port.read(&mut buffer)?;
+        port.read_exact(&mut buffer)?;
         if buffer[0] & 0x80 == 0 {
             continue;
         }
         let resp_type = buffer[0] & 0x7F;
-        port.read(&mut buffer)?;
+        port.read_exact(&mut buffer)?;
         if buffer[0] & 0x80 != 0 {
             continue;
         }
         let mut length = (buffer[0] as usize) << 7;
-        port.read(&mut buffer)?;
+        port.read_exact(&mut buffer)?;
         if buffer[0] & 0x80 != 0 {
             continue;
         }
@@ -33,7 +33,7 @@ fn get_response(port: &mut Box<dyn SerialPort>) -> Result<Response, Box<dyn std:
         println!("Response type: {}, length: {}", resp_type, length);
         let mut data = Vec::with_capacity(length);
         for _ in 0..length {
-            port.read(&mut buffer)?;
+            port.read_exact(&mut buffer)?;
             data.push(buffer[0]);
         }
         if let Some(rtype) = MessageType::try_from_byte(resp_type) {
@@ -69,8 +69,8 @@ fn main() {
         .open()
         .unwrap();
 
-    port.write(&Command::Reset.as_byte()).unwrap(); // Reset the device
-    port.write(&Command::RequestBoard.as_byte()).unwrap(); // Reset the device
+    port.write_all(&Command::Reset.as_byte()).unwrap(); // Reset the device
+    port.write_all(&Command::RequestBoard.as_byte()).unwrap(); // Reset the device
     let pos = get_response(&mut port).unwrap();
     println!("{:?}", pos);
     let mut game_board = match pos {
@@ -82,10 +82,11 @@ fn main() {
             panic!("Unexpected response");
         }
     };
-    port.write(&Command::RequestSerialNumber.as_byte()).unwrap(); // Reset the device
+    port.write_all(&Command::RequestSerialNumber.as_byte())
+        .unwrap(); // Reset the device
     println!("{:?}", get_response(&mut port).unwrap());
 
-    port.write(&Command::RequestUpdate.as_byte()).unwrap(); // Reset the device
+    port.write_all(&Command::RequestUpdate.as_byte()).unwrap(); // Reset the device
 
     loop {
         match get_response(&mut port) {

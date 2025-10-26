@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Commands that can be sent to a DGT board
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
@@ -80,7 +82,7 @@ impl Remaining {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClockStatus {
+pub enum ClockStatus {
     NoCock,
     WhitesTurn,
     BlacksTurn,
