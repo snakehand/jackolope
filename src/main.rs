@@ -88,13 +88,26 @@ fn main() {
 
     port.write_all(&Command::RequestUpdate.as_byte()).unwrap(); // Reset the device
 
+    let mut game = GameTracker::new();
+    game.set_pgn_file("games.pgn");
+    game.push(&game_board);
+
     loop {
         match get_response(&mut port) {
             Ok(response) => {
                 println!("Received response: {:?}", response);
                 if let Response::FieldUpdate(mv) = response {
                     game_board.apply_move(mv);
-                    println!("{:?}", game_board.is_starting_position());
+                    // Detect the orientation before fingerprinting the board
+                    if game_board.is_starting_position() != StartPosition::None {
+                        for partition in game.flush() {
+                            println!("{}", partition);
+                        }
+                        println!("New Game");
+                    }
+                    if game.push(&game_board) {
+                        print!("{}", game);
+                    }
                 }
             }
             Err(e) => {
