@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 chess = "3.2.0"
+eframe = "0.37.0"
+resvg = { version = "0.48.1", default-features = false }
 serialport = "4.6.1"

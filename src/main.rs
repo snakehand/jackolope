@@ -1,10 +1,15 @@
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
 use std::time::Duration;
 
+use eframe::egui;
 use serialport::SerialPort;
 
+mod chessboard;
 mod game;
 mod protocol;
 
+use chessboard::{initial_position, model_from_raw, Model};
 use game::*;
 use protocol::*;
 
@@ -55,10 +60,18 @@ fn get_response(port: &mut Box<dyn SerialPort>) -> Result<Response, Box<dyn std:
     }
 }
 
-fn main() {
-    println!("Hello, world!");
-
-    let port_name = "/dev/tty.usbserial-1120";
+/// Reads the DGT board over the serial port and sends every new position to the UI.
+/// Runs until the serial port fails or the UI hangs up the channel.
+fn board_reader(
+    port_name: &str,
+    tx: Sender<Model>,
+    ctx: egui::Context,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let send = |game_board: &GameBoard| -> bool {
+        let ok = tx.send(model_from_raw(game_board.squares())).is_ok();
+        ctx.request_repaint();
+        ok
+    };
 
     let mut port = serialport::new(port_name, 9600)
         .data_bits(serialport::DataBits::Eight)
@@ -66,31 +79,30 @@ fn main() {
         .stop_bits(serialport::StopBits::One)
         .flow_control(serialport::FlowControl::Hardware)
         .timeout(Duration::from_millis(1000))
-        .open()
-        .unwrap();
+        .open()?;
 
-    port.write_all(&Command::Reset.as_byte()).unwrap(); // Reset the device
-    port.write_all(&Command::RequestBoard.as_byte()).unwrap(); // Reset the device
-    let pos = get_response(&mut port).unwrap();
+    port.write_all(&Command::Reset.as_byte())?; // Reset the device
+    port.write_all(&Command::RequestBoard.as_byte())?; // Request full board dump
+    let pos = get_response(&mut port)?;
     println!("{:?}", pos);
     let mut game_board = match pos {
         Response::BoardDump(board) => {
             println!("{:?}", board);
             GameBoard::new(board)
         }
-        _ => {
-            panic!("Unexpected response");
-        }
+        _ => return Err("Unexpected response".into()),
     };
-    port.write_all(&Command::RequestSerialNumber.as_byte())
-        .unwrap(); // Reset the device
-    println!("{:?}", get_response(&mut port).unwrap());
+    port.write_all(&Command::RequestSerialNumber.as_byte())?;
+    println!("{:?}", get_response(&mut port)?);
 
-    port.write_all(&Command::RequestUpdate.as_byte()).unwrap(); // Reset the device
+    port.write_all(&Command::RequestUpdate.as_byte())?; // Request field updates
 
     let mut game = GameTracker::new();
     game.set_pgn_file("games.pgn");
     game.push(&game_board);
+    if !send(&game_board) {
+        return Ok(());
+    }
 
     loop {
         match get_response(&mut port) {
@@ -108,6 +120,9 @@ fn main() {
                     if game.push(&game_board) {
                         print!("{}", game);
                     }
+                    if !send(&game_board) {
+                        return Ok(());
+                    }
                 }
             }
             Err(e) => {
@@ -115,4 +130,48 @@ fn main() {
             }
         }
     }
+}
+
+struct App {
+    board: chessboard::ChessBoard,
+    positions: Receiver<Model>,
+}
+
+impl eframe::App for App {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Only the latest position matters; drain anything that queued up.
+        while let Ok(model) = self.positions.try_recv() {
+            self.board.model = model;
+        }
+        egui::CentralPanel::default().show(ui, |ui| {
+            self.board.ui(ui);
+        });
+    }
+}
+
+fn main() -> eframe::Result {
+    let port_name = "/dev/cu.usbserial-11120";
+    let light_blue = [173, 216, 230];
+    let dark_blue = [30, 60, 140];
+
+    eframe::run_native(
+        "Jackolope",
+        eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_inner_size([640.0, 640.0]),
+            ..Default::default()
+        },
+        Box::new(move |cc| {
+            let (tx, rx) = mpsc::channel();
+            let ctx = cc.egui_ctx.clone();
+            thread::spawn(move || {
+                if let Err(e) = board_reader(port_name, tx, ctx) {
+                    eprintln!("Board reader stopped: {}", e);
+                }
+            });
+            Ok(Box::new(App {
+                board: chessboard::ChessBoard::new(initial_position(), light_blue, dark_blue),
+                positions: rx,
+            }))
+        }),
+    )
 }

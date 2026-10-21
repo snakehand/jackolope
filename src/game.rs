@@ -170,6 +170,15 @@ impl GameBoard {
         }
     }
 
+    /// Pieces in canonical orientation, indexed by chess square (a1 = 0, h8 = 63).
+    pub fn squares(&self) -> [RawPiece; 64] {
+        let mut out = [RawPiece::Empty; 64];
+        for (grid, piece) in self.board.board.iter().enumerate() {
+            out[self.square_of(grid)] = *piece;
+        }
+        out
+    }
+
     /// Fingerprint of the board in canonical orientation, independent of how the
     /// board was set up, so it can be compared with positions from the chess crate.
     pub fn fingerprint(&self) -> FingerPrint {
