@@ -179,6 +179,18 @@ impl GameBoard {
         out
     }
 
+    /// Squares where a full board dump differs from this board, as
+    /// (square name, piece on this board, piece in the dump).
+    pub fn diff(&self, dump: &ChessBoard) -> Vec<(String, RawPiece, RawPiece)> {
+        (0..64)
+            .filter(|&grid| self.board.board[grid] != dump.board[grid])
+            .map(|grid| {
+                let square = ALL_SQUARES[self.square_of(grid)].to_string();
+                (square, self.board.board[grid], dump.board[grid])
+            })
+            .collect()
+    }
+
     /// Fingerprint of the board in canonical orientation, independent of how the
     /// board was set up, so it can be compared with positions from the chess crate.
     pub fn fingerprint(&self) -> FingerPrint {
