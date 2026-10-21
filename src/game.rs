@@ -3,7 +3,6 @@ use chess::{
     Board, BoardBuilder, BoardStatus, CastleRights, Color, File, MoveGen, Piece, Square,
     ALL_COLORS, ALL_SQUARES,
 };
-use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{self, Write as _};
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
@@ -11,46 +10,6 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub type FingerPrint = [u32; 8];
-
-pub struct Capture {
-    piece: RawPiece,
-    grid: u8,
-}
-
-pub struct Move {
-    piece: RawPiece,
-    from: u8,
-    to: u8,
-}
-
-pub enum DetectedMove {
-    ShortCastle,
-    LongCastle,
-    PawnCapture(Capture),
-    Promotion(Move, RawPiece),
-    PromotionCapture(Move, Capture, RawPiece),
-    SimpleMove(Move),
-    SimpleCapture(Move, Capture),
-}
-
-fn detect_move(moves: &[ChessMove]) -> Option<DetectedMove> {
-    let mut added = HashMap::new();
-    let mut removed = HashSet::new();
-    for mv in moves {
-        if mv.piece == RawPiece::Empty {
-            if let Entry::Occupied(e) = added.entry(mv.grid) {
-                e.remove();
-            }
-            removed.insert(mv.grid);
-        } else {
-            if removed.contains(&mv.grid) {
-                removed.remove(&mv.grid);
-            }
-            added.insert(mv.grid, mv.piece);
-        }
-    }
-    None
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartPosition {

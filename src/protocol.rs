@@ -287,7 +287,7 @@ impl Response {
                 if data.len() == 64 {
                     match ChessBoard::new(data.try_into().unwrap()) {
                         Some(board) => Ok(Response::BoardDump(board)),
-                        None => Err(ParseError::InvalidPiece),
+                        None => Err(ParseError::Piece),
                     }
                 } else {
                     Err(ParseError::invalid_length(message_type, 64, data.len()))
@@ -314,10 +314,10 @@ impl Response {
                         if let Some(piece) = RawPiece::try_from_byte(data[1]) {
                             Ok(Response::FieldUpdate(ChessMove::new(grid, piece)))
                         } else {
-                            Err(ParseError::InvalidPiece)
+                            Err(ParseError::Piece)
                         }
                     } else {
-                        Err(ParseError::InvalidMove)
+                        Err(ParseError::Move)
                     }
                 } else {
                     Err(ParseError::invalid_length(message_type, 2, data.len()))
@@ -349,18 +349,18 @@ impl Response {
 
 #[derive(Debug)]
 pub enum ParseError {
-    InvalidLength {
+    Length {
         message_type: MessageType,
         expected: usize,
         actual: usize,
     },
-    InvalidPiece,
-    InvalidMove,
+    Piece,
+    Move,
 }
 
 impl ParseError {
     fn invalid_length(message_type: MessageType, expected: usize, actual: usize) -> Self {
-        ParseError::InvalidLength {
+        ParseError::Length {
             message_type,
             expected,
             actual,
