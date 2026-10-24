@@ -367,7 +367,9 @@ impl Partition {
             tokens.push(san(&board, ply.mv));
             board = ply.board;
         }
-        tokens.push(result.to_string());
+        if !result.is_empty() {
+            tokens.push(result.to_string());
+        }
 
         let mut text = String::new();
         let mut width = 0;
@@ -768,6 +770,26 @@ impl GameTracker {
         pgn
     }
 
+    /// The moves recorded so far in standard algebraic notation, one paragraph per
+    /// partition. The result is only shown once the game is decided.
+    pub fn notation(&self) -> String {
+        let result = self.result();
+        let count = self.partitions.len();
+        self.partitions
+            .iter()
+            .enumerate()
+            .map(|(i, partition)| {
+                let result = if i + 1 == count && result != "*" {
+                    result.as_str()
+                } else {
+                    ""
+                };
+                partition.movetext(None, result).replace('\n', " ")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
     /// Append the game as PGN to a file, creating it if needed.
     pub fn append_pgn(&self, path: &Path) -> io::Result<()> {
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
@@ -957,6 +979,18 @@ mod tests {
         assert_eq!(san_of(fen, "e4d5"), "exd5");
         let fen = "rnbqkbnr/ppppp2p/5p2/6p1/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 3";
         assert_eq!(san_of(fen, "d1h5"), "Qh5#");
+    }
+
+    #[test]
+    fn test_notation() {
+        let mut sim = Sim::new();
+        assert_eq!(sim.tracker.notation(), "");
+        for mv in ["f2f3", "e7e5", "g2g4"] {
+            sim.play(mv);
+        }
+        assert_eq!(sim.tracker.notation(), "1. f3 e5 2. g4");
+        sim.play("d8h4");
+        assert_eq!(sim.tracker.notation(), "1. f3 e5 2. g4 Qh4# 0-1");
     }
 
     #[test]

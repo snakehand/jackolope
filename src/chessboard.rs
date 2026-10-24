@@ -200,7 +200,9 @@ impl ChessBoard {
                         Some((col, srow)) => {
                             let stride = sheet.width() as usize * 4;
                             let src_start = (srow * square_px + y) * stride + col * square_px * 4;
-                            dst.copy_from_slice(&sheet.data()[src_start..src_start + square_px * 4]);
+                            dst.copy_from_slice(
+                                &sheet.data()[src_start..src_start + square_px * 4],
+                            );
                         }
                         None => {
                             for px in dst.chunks_exact_mut(4) {
